@@ -20,61 +20,104 @@ class TimeSeriesDataset(Dataset):
         return self.X[idx], self.y[idx]
 
 class LSTMModel(nn.Module):
-    def __init__(self, input_size, hidden_size=64, num_layers=2):
+    def __init__(self, input_size, hidden_size=128, num_layers=2, output_size=1, dropout=0.2):
         super().__init__()
         self.hidden_size = hidden_size
         self.num_layers = num_layers
         
-        self.lstm = nn.LSTM(
-            input_size=input_size,
-            hidden_size=hidden_size,
-            num_layers=num_layers,
-            batch_first=True,
-            dropout=0.2
+        self.input_norm = nn.LayerNorm(input_size)
+        
+        self.lstm_layers = nn.ModuleList([
+            nn.LSTM(
+                input_size if i == 0 else hidden_size * 2,
+                hidden_size,
+                num_layers=1,
+                batch_first=True,
+                bidirectional=True
+            ) for i in range(num_layers)
+        ])
+        
+        self.layer_norms = nn.ModuleList([
+            nn.LayerNorm(hidden_size * 2) for _ in range(num_layers)
+        ])
+        
+        self.dropouts = nn.ModuleList([
+            nn.Dropout(dropout) for _ in range(num_layers)
+        ])
+        
+        self.attention = nn.Sequential(
+            nn.Linear(hidden_size * 2, hidden_size),
+            nn.GELU(),
+            nn.Linear(hidden_size, 1),
+            nn.Softmax(dim=1)
         )
-        self.fc = nn.Linear(hidden_size, 1)
+        
+        self.fc_layers = nn.Sequential(
+            nn.LayerNorm(hidden_size * 2),
+            nn.Linear(hidden_size * 2, hidden_size),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.LayerNorm(hidden_size),
+            nn.Linear(hidden_size, hidden_size // 2),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.LayerNorm(hidden_size // 2),
+            nn.Linear(hidden_size // 2, output_size)
+        )
     
     def forward(self, x):
-        """Forward pass of the model.
-        
-        Args:
-            x (torch.Tensor): Input tensor of shape (batch_size, seq_length, input_size)
-                             or (batch_size, input_size)
-        
-        Returns:
-            torch.Tensor: Output predictions
-        """
-        # Add sequence length dimension if not present
         if len(x.shape) == 2:
-            x = x.unsqueeze(1)  # (batch_size, 1, input_size)
+            x = x.unsqueeze(1)
         
-        # Forward propagate LSTM
-        lstm_out, _ = self.lstm(x)  # lstm_out: (batch_size, seq_length, hidden_size)
+        batch_size, seq_len, _ = x.shape
         
-        # Get the last time step output
-        last_time_step = lstm_out[:, -1, :]  # (batch_size, hidden_size)
+        x = self.input_norm(x)
         
-        # Predict
-        out = self.fc(last_time_step)  # (batch_size, 1)
+        lstm_out = x
+        for i in range(self.num_layers):
+            residual = lstm_out
+            lstm_out, _ = self.lstm_layers[i](lstm_out)
+            lstm_out = self.layer_norms[i](lstm_out)
+            lstm_out = self.dropouts[i](lstm_out)
+            if i > 0:  # Add residual connection after first layer
+                lstm_out = lstm_out + residual
+        
+        attention_weights = self.attention(lstm_out)
+        context = torch.bmm(attention_weights.transpose(1, 2), lstm_out)
+        context = context.squeeze(1)
+        
+        out = self.fc_layers(context)
         return out
 
 class StockPriceLSTM:
-    def __init__(self, sequence_length: int = 60, n_features: int = 5):
-        """
-        Initialize the LSTM model for stock price prediction.
-        
-        Args:
-            sequence_length (int): Number of time steps to look back
-            n_features (int): Number of features in the input data
-        """
-        self.sequence_length = sequence_length
-        self.n_features = n_features
+    def __init__(self, input_size=7, hidden_size=128, num_layers=2, output_size=1, dropout=0.2):
+        """Initialize the LSTM model for stock price prediction."""
+        self.input_size = input_size
+        self.hidden_size = hidden_size
+        self.num_layers = num_layers
+        self.output_size = output_size
+        self.dropout = dropout
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu')
         
         # Initialize the model
-        self.model = LSTMModel(input_size=n_features).to(self.device)
+        self.model = LSTMModel(
+            input_size=input_size,
+            hidden_size=hidden_size,
+            num_layers=num_layers,
+            output_size=output_size,
+            dropout=dropout
+        ).to(self.device)
+        
         self.criterion = nn.MSELoss()
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=0.001)
+        # Optimizer with gradient clipping
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=0.001, weight_decay=1e-5)
+        # Cosine annealing scheduler
+        self.scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+            self.optimizer,
+            T_0=10,  # First restart after 10 epochs
+            T_mult=2,  # Double the restart interval after each restart
+            eta_min=1e-6  # Minimum learning rate
+        )
         
         logger.info(f"Using device: {self.device}")
         logger.info(f"Model architecture:\n{self.model}")
@@ -82,14 +125,14 @@ class StockPriceLSTM:
     @staticmethod
     def load_model(filepath=None):
         """Load a pretrained model or create a new one for testing."""
-        model = StockPriceLSTM(n_features=4)  # 4 features: open, high, low, volume
+        model = StockPriceLSTM(input_size=7)  # 7 features: open, high, low, volume, percentage change, etc.
         if filepath and os.path.exists(filepath):
             model.model.load_state_dict(torch.load(filepath))
         return model
         
     def train(self, X_train: np.ndarray, y_train: np.ndarray, 
               X_val: np.ndarray, y_val: np.ndarray,
-              epochs: int = 100, batch_size: int = 32) -> dict:
+              epochs: int = 200, batch_size: int = 32) -> dict:
         """
         Train the LSTM model.
         
@@ -114,6 +157,8 @@ class StockPriceLSTM:
             
             history = {'train_loss': [], 'val_loss': []}
             best_val_loss = float('inf')
+            patience = 15  # Increased patience for early stopping
+            no_improve_count = 0
             
             # Create directory for model checkpoints
             os.makedirs("models", exist_ok=True)
@@ -134,6 +179,8 @@ class StockPriceLSTM:
                     # Backward and optimize
                     self.optimizer.zero_grad()
                     loss.backward()
+                    # Gradient clipping
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
                     self.optimizer.step()
                     
                     train_losses.append(loss.item())
@@ -158,10 +205,20 @@ class StockPriceLSTM:
                 history['train_loss'].append(train_loss)
                 history['val_loss'].append(val_loss)
                 
-                # Save best model
+                # Step the scheduler
+                self.scheduler.step()
+                
+                # Save best model and check early stopping
                 if val_loss < best_val_loss:
                     best_val_loss = val_loss
                     torch.save(self.model.state_dict(), "models/best_model.pth")
+                    no_improve_count = 0
+                else:
+                    no_improve_count += 1
+                
+                if no_improve_count >= patience:
+                    logger.info(f"Early stopping triggered at epoch {epoch+1}")
+                    break
                 
                 if (epoch + 1) % 10 == 0:
                     logger.info(f'Epoch [{epoch+1}/{epochs}], Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}')
@@ -240,11 +297,10 @@ def main():
     try:
         # Example usage (assuming data is prepared)
         sequence_length = 60
-        n_features = 5  # OHLCV
+        n_features = 8  # OHLCV + percentage change
         
         # Initialize model
-        model = StockPriceLSTM(sequence_length=sequence_length,
-                              n_features=n_features)
+        model = StockPriceLSTM(input_size=n_features)
         
         # Generate sample data for testing
         X_train = np.random.random((1000, sequence_length, n_features))

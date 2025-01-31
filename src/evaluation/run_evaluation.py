@@ -14,17 +14,29 @@ from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 from sklearn.preprocessing import MinMaxScaler
 
 from src.models.lstm_model import StockPriceLSTM
+from src.models.train_model import prepare_price_features, create_sequences
 
-def load_scaler():
-    """Load the saved feature scaler."""
-    scaler_params = np.load('models/feature_scaler.npy', allow_pickle=True).item()
-    scaler = MinMaxScaler()
-    scaler.scale_ = scaler_params['scale_']
-    scaler.min_ = scaler_params['min_']
-    scaler.data_min_ = scaler_params['data_min_']
-    scaler.data_max_ = scaler_params['data_max_']
-    scaler.data_range_ = scaler_params['data_range_']
-    return scaler
+def load_scalers():
+    """Load the saved feature and target scalers."""
+    # Load feature scaler
+    feature_scaler_params = np.load('models/feature_scaler.npy', allow_pickle=True).item()
+    feature_scaler = MinMaxScaler()
+    feature_scaler.scale_ = feature_scaler_params['scale_']
+    feature_scaler.min_ = feature_scaler_params['min_']
+    feature_scaler.data_min_ = feature_scaler_params['data_min_']
+    feature_scaler.data_max_ = feature_scaler_params['data_max_']
+    feature_scaler.data_range_ = feature_scaler_params['data_range_']
+    
+    # Load target scaler
+    target_scaler_params = np.load('models/target_scaler.npy', allow_pickle=True).item()
+    target_scaler = MinMaxScaler()
+    target_scaler.scale_ = target_scaler_params['scale_']
+    target_scaler.min_ = target_scaler_params['min_']
+    target_scaler.data_min_ = target_scaler_params['data_min_']
+    target_scaler.data_max_ = target_scaler_params['data_max_']
+    target_scaler.data_range_ = target_scaler_params['data_range_']
+    
+    return feature_scaler, target_scaler
 
 def calculate_metrics(y_true, y_pred):
     """Calculate various performance metrics."""
@@ -69,26 +81,52 @@ def main():
     print("Loading test data...")
     test_data = pd.read_csv('data/processed/test_data.csv')
     
-    # Load scaler
-    print("\nLoading feature scaler...")
-    scaler = load_scaler()
+    # Prepare features
+    print("\nPreparing features...")
+    test_data = prepare_price_features(test_data)
+    
+    # Load scalers
+    print("\nLoading scalers...")
+    feature_scaler, target_scaler = load_scalers()
     
     # Prepare input data
-    X_test = test_data[['open', 'high', 'low', 'volume']].values
+    feature_columns = [
+        'return_1d', 'high_low_pct', 'open_close_pct',
+        'momentum_1d', 'momentum_3d', 'momentum_5d',
+        'volatility_5d', 'volatility_10d', 'ma_crossover'
+    ]
+    X_test = test_data[feature_columns].values
     y_true = test_data['target'].values
     
-    # Scale features
-    print("\nScaling features...")
-    X_test_scaled = scaler.transform(X_test)
+    # Scale features and target
+    print("\nScaling data...")
+    X_test_scaled = feature_scaler.transform(X_test)
+    y_true_scaled = target_scaler.transform(y_true.reshape(-1, 1)).flatten()
+    
+    # Create sequences
+    print("\nCreating sequences...")
+    seq_length = 10
+    X_test_seq, y_true_seq = create_sequences(X_test_scaled, y_true_scaled, seq_length)
     
     # Initialize model
     print("\nInitializing model...")
-    model = StockPriceLSTM(sequence_length=1, n_features=X_test.shape[1])
+    model = StockPriceLSTM(
+        input_size=X_test_seq.shape[2],  # Number of features
+        hidden_size=128,
+        num_layers=2,
+        output_size=1,
+        dropout=0.2
+    )
     print(f"Using device: {model.device}")
     
     # Generate predictions
     print("\nGenerating predictions...")
-    y_pred = model.predict(X_test_scaled).flatten()
+    y_pred_scaled = model.predict(X_test_seq).flatten()
+    
+    # Inverse transform predictions
+    print("\nInverse transforming predictions...")
+    y_pred = target_scaler.inverse_transform(y_pred_scaled.reshape(-1, 1)).flatten()
+    y_true = y_true[seq_length:]  # Align with predictions
     
     # Calculate metrics
     print("\nCalculating metrics...")
