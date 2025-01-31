@@ -12,13 +12,13 @@ class ModelEvaluator:
     def __init__(self, model):
         self.model = model
         
-    def get_predictions(self, test_data):
+    def get_predictions(self, X_test):
         """Generate predictions using the model."""
         try:
             self.model.eval()  # Set model to evaluation mode
             with torch.no_grad():
-                predictions = self.model(test_data)
-            return test_data['target'].values, predictions.numpy()
+                predictions = self.model(X_test)
+            return X_test.numpy(), predictions.numpy().flatten()
         except Exception as e:
             logger.error(f"Error generating predictions: {str(e)}")
             raise
