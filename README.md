@@ -6,25 +6,76 @@ This project implements a machine learning model for predicting stock price move
 
 ```
 ├── data/                      # Directory for storing data
+│   ├── raw/                  # Raw data files
+│   └── processed/            # Processed data files
 ├── models/                    # Directory for saving trained models
-├── notebooks/                 # Jupyter notebooks for analysis and visualization
+│   ├── best_model.pth       # Best trained model weights
+│   └── feature_scaler.npy   # Saved feature scaler
+├── outputs/                   # Model outputs and evaluation results
+│   └── evaluation/          # Evaluation metrics and plots
 ├── src/                      # Source code
-│   ├── data/                 # Data processing modules
+│   ├── data/                # Data processing modules
 │   │   ├── __init__.py
-│   │   ├── data_loader.py    # Data loading utilities
-│   │   └── preprocessor.py   # Data preprocessing utilities
-│   ├── features/             # Feature engineering
+│   │   ├── data_loader.py  # Data loading utilities
+│   │   └── preprocessor.py # Data preprocessing utilities
+│   ├── models/              # Model implementation
 │   │   ├── __init__.py
-│   │   └── technical_indicators.py
-│   ├── models/               # Model implementation
-│   │   ├── __init__.py
-│   │   └── lstm_model.py
-│   └── utils/                # Utility functions
+│   │   ├── lstm_model.py   # LSTM model implementation
+│   │   └── train_model.py  # Model training script
+│   └── evaluation/          # Evaluation utilities
 │       ├── __init__.py
-│       └── evaluation.py
+│       └── run_evaluation.py
 ├── requirements.txt          # Project dependencies
 └── README.md                # Project documentation
 ```
+
+## Model Architecture
+
+The project implements an LSTM (Long Short-Term Memory) neural network for time series prediction. The model architecture includes:
+
+- Input Layer: Accepts 4 features (open, high, low, volume)
+- LSTM Layers:
+  - 2 stacked LSTM layers with 64 hidden units each
+  - Dropout rate of 0.2 for regularization
+  - Batch-first configuration for easier data handling
+- Output Layer: Dense layer with 1 unit for price prediction
+
+## Training Process
+
+The model is trained using the following configuration:
+- Optimizer: Adam with learning rate 0.001
+- Loss Function: Mean Squared Error (MSE)
+- Batch Size: 32
+- Epochs: 100
+- Train/Validation Split: 80/20
+
+Training progress shows consistent decrease in both training and validation loss:
+```
+Epoch [10/100], Train Loss: 30694.3151, Val Loss: 28954.2754
+Epoch [20/100], Train Loss: 29198.5143, Val Loss: 28522.6387
+Epoch [30/100], Train Loss: 28208.7285, Val Loss: 27659.2441
+...
+Epoch [90/100], Train Loss: 24725.5345, Val Loss: 24323.1543
+Epoch [100/100], Train Loss: 24111.4486, Val Loss: 23856.3730
+```
+
+## Latest Evaluation Results
+
+The model's performance on the test dataset:
+
+| Metric | Value |
+|--------|--------|
+| MSE    | 30474.36 |
+| RMSE   | 174.57 |
+| MAE    | 171.67 |
+| R²     | -29.33 |
+| MAPE   | 100.04% |
+
+Note: The current metrics indicate that the model needs further improvement. This could be achieved through:
+1. Using real historical stock data instead of randomly generated data
+2. Feature engineering to include technical indicators
+3. Hyperparameter optimization
+4. Increasing the sequence length to capture longer-term patterns
 
 ## Setup and Installation
 
@@ -34,10 +85,10 @@ This project implements a machine learning model for predicting stock price move
    cd stock-price-prediction-ml
    ```
 
-2. Create and activate a virtual environment (recommended):
+2. Create and activate a virtual environment:
    ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   python -m venv .venv
+   source .venv/bin/activate  # On Windows: .venv\Scripts\activate
    ```
 
 3. Install dependencies:
@@ -47,56 +98,55 @@ This project implements a machine learning model for predicting stock price move
 
 ## Usage
 
-1. Data Collection and Preprocessing:
+1. Train the model:
    ```bash
-   python src/data/data_loader.py
+   python src/models/train_model.py
    ```
 
-2. Feature Engineering and Model Training:
+2. Evaluate the model:
    ```bash
-   python src/models/lstm_model.py
+   python src/evaluation/run_evaluation.py
    ```
 
-3. For detailed analysis and visualization, explore the Jupyter notebooks in the `notebooks/` directory.
-
-## Model Architecture
-
-The project implements an LSTM (Long Short-Term Memory) neural network for time series prediction. The model architecture includes:
-- Multiple LSTM layers for capturing temporal dependencies
-- Dropout layers for preventing overfitting
-- Dense layers for final predictions
-
-## Feature Engineering
-
-The following technical indicators are implemented:
-- Relative Strength Index (RSI)
-- Moving Average Convergence Divergence (MACD)
-- Bollinger Bands
-- Simple Moving Averages (SMA)
-- Exponential Moving Averages (EMA)
-
-## Evaluation Metrics
-
-The model's performance is evaluated using:
-- Root Mean Square Error (RMSE)
-- Mean Absolute Percentage Error (MAPE)
-- R-squared (R²) score
-
-## Results
-
-Detailed evaluation results and analysis can be found in the notebooks directory.
+The evaluation results will be saved in the `outputs/evaluation/` directory:
+- `predictions.png`: Plot of actual vs predicted values
+- `error_distribution.png`: Distribution of prediction errors
+- `metrics.txt`: Detailed performance metrics
 
 ## Dependencies
 
 Major dependencies include:
-- numpy
-- pandas
-- scikit-learn
-- tensorflow
-- yfinance
-- ta (Technical Analysis Library)
+- PyTorch >= 2.2.0
+- NumPy >= 1.21.0
+- Pandas >= 1.3.0
+- Scikit-learn >= 0.24.2
+- Matplotlib >= 3.4.3
+- Seaborn >= 0.11.2
 
 For a complete list of dependencies, see `requirements.txt`.
+
+## Future Improvements
+
+1. Data Collection:
+   - Implement real-time data fetching using yfinance
+   - Add support for multiple data sources
+   - Include more financial indicators
+
+2. Model Enhancement:
+   - Implement attention mechanism
+   - Add support for multi-step prediction
+   - Experiment with different architectures (GRU, Transformer)
+
+3. Feature Engineering:
+   - Add technical indicators (RSI, MACD, Bollinger Bands)
+   - Include sentiment analysis from news/social media
+   - Implement automatic feature selection
+
+4. Training Optimization:
+   - Add early stopping
+   - Implement learning rate scheduling
+   - Add cross-validation
+   - Hyperparameter tuning using Optuna/Ray Tune
 
 ## License
 
