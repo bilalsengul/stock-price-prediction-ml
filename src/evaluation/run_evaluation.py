@@ -11,30 +11,24 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
-from sklearn.preprocessing import MinMaxScaler
+from sklearn.preprocessing import MinMaxScaler, RobustScaler
 
 from src.models.lstm_model import StockPriceLSTM
 from src.models.train_model import prepare_price_features, create_sequences
 
 def load_scalers():
     """Load the saved feature and target scalers."""
-    # Load feature scaler
-    feature_scaler_params = np.load('models/feature_scaler.npy', allow_pickle=True).item()
-    feature_scaler = MinMaxScaler()
-    feature_scaler.scale_ = feature_scaler_params['scale_']
-    feature_scaler.min_ = feature_scaler_params['min_']
-    feature_scaler.data_min_ = feature_scaler_params['data_min_']
-    feature_scaler.data_max_ = feature_scaler_params['data_max_']
-    feature_scaler.data_range_ = feature_scaler_params['data_range_']
+    feature_scaler = RobustScaler()
+    target_scaler = RobustScaler()
     
-    # Load target scaler
+    feature_scaler_params = np.load('models/feature_scaler.npy', allow_pickle=True).item()
     target_scaler_params = np.load('models/target_scaler.npy', allow_pickle=True).item()
-    target_scaler = MinMaxScaler()
+    
+    feature_scaler.scale_ = feature_scaler_params['scale_']
+    feature_scaler.center_ = feature_scaler_params['center_']
+    
     target_scaler.scale_ = target_scaler_params['scale_']
-    target_scaler.min_ = target_scaler_params['min_']
-    target_scaler.data_min_ = target_scaler_params['data_min_']
-    target_scaler.data_max_ = target_scaler_params['data_max_']
-    target_scaler.data_range_ = target_scaler_params['data_range_']
+    target_scaler.center_ = target_scaler_params['center_']
     
     return feature_scaler, target_scaler
 

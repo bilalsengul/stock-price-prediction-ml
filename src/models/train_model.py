@@ -9,7 +9,7 @@ sys.path.append(str(project_root))
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import MinMaxScaler
+from sklearn.preprocessing import MinMaxScaler, RobustScaler
 import torch
 import torch.nn as nn
 from torch.optim.lr_scheduler import ReduceLROnPlateau
@@ -109,11 +109,8 @@ def prepare_price_features(df):
     return df
 
 def prepare_data(df: pd.DataFrame, seq_length: int = 10) -> tuple:
-    """Prepare data for training with augmentation."""
-    # Prepare features
     df = prepare_price_features(df)
     
-    # Select features
     feature_columns = [
         'return_1d', 'high_low_pct', 'open_close_pct',
         'momentum_1d', 'momentum_3d', 'momentum_5d',
@@ -122,31 +119,30 @@ def prepare_data(df: pd.DataFrame, seq_length: int = 10) -> tuple:
     X = df[feature_columns].values
     y = df['target'].values
     
-    # Scale features
-    scaler = MinMaxScaler()
+    scaler = RobustScaler()  # Changed to RobustScaler for better handling of outliers
     X_scaled = scaler.fit_transform(X)
     
-    # Scale target
-    target_scaler = MinMaxScaler()
+    target_scaler = RobustScaler()
     y_scaled = target_scaler.fit_transform(y.reshape(-1, 1)).flatten()
     
-    # Create sequences
     X_seq, y_seq = create_sequences(X_scaled, y_scaled, seq_length)
     
-    # Data augmentation
+    # Enhanced data augmentation
     X_aug = np.concatenate([
         X_seq,
-        add_noise(X_seq, 0.01),  # Add small noise
-        add_noise(X_seq, 0.02)   # Add larger noise
+        add_noise(X_seq, 0.01),
+        add_noise(X_seq, 0.02),
+        np.roll(X_seq, shift=1, axis=1),  # Time shift augmentation
+        np.roll(X_seq, shift=-1, axis=1)  # Time shift augmentation
     ])
-    y_aug = np.concatenate([y_seq, y_seq, y_seq])
+    y_aug = np.concatenate([y_seq] * 5)  # Repeat targets for each augmentation
     
     # Shuffle augmented data
     shuffle_idx = np.random.permutation(len(X_aug))
     X_aug = X_aug[shuffle_idx]
     y_aug = y_aug[shuffle_idx]
     
-    # Split data
+    # Split with validation
     train_size = int(len(X_aug) * 0.8)
     X_train = X_aug[:train_size]
     X_val = X_aug[train_size:]
@@ -236,55 +232,43 @@ def train_model(model, X_train, y_train, X_val, y_val, epochs=200, batch_size=64
     return history
 
 def main():
-    # Change to project root directory
     os.chdir(project_root)
     
     try:
-        # Load data
         logger.info("Loading data...")
         df = pd.read_csv('data/processed/test_data.csv')
         
-        # Prepare data
         logger.info("Preparing data...")
         X_train, X_val, y_train, y_val, scaler, target_scaler = prepare_data(df, seq_length=10)
         
-        # Initialize model
         logger.info("Initializing model...")
         model = StockPriceLSTM(
-            input_size=X_train.shape[2],  # Number of features
+            input_size=X_train.shape[2],
             hidden_size=128,
             num_layers=2,
             output_size=1,
             dropout=0.2
         )
         
-        # Train model
         logger.info("Training model...")
         history = model.train(
             X_train=X_train,
             y_train=y_train,
             X_val=X_val,
             y_val=y_val,
-            epochs=100,  # Reduced epochs due to augmented data
-            batch_size=64  # Increased batch size for stability
+            epochs=150,  # Increased epochs for better convergence
+            batch_size=32  # Reduced batch size for better generalization
         )
         
-        # Save scalers
         logger.info("Saving scalers...")
         os.makedirs('models', exist_ok=True)
         np.save('models/feature_scaler.npy', {
             'scale_': scaler.scale_,
-            'min_': scaler.min_,
-            'data_min_': scaler.data_min_,
-            'data_max_': scaler.data_max_,
-            'data_range_': scaler.data_range_
+            'center_': scaler.center_,
         })
         np.save('models/target_scaler.npy', {
             'scale_': target_scaler.scale_,
-            'min_': target_scaler.min_,
-            'data_min_': target_scaler.data_min_,
-            'data_max_': target_scaler.data_max_,
-            'data_range_': target_scaler.data_range_
+            'center_': target_scaler.center_,
         })
         
         logger.info("Training completed successfully!")
