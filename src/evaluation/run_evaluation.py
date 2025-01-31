@@ -11,8 +11,20 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+from sklearn.preprocessing import MinMaxScaler
 
 from src.models.lstm_model import StockPriceLSTM
+
+def load_scaler():
+    """Load the saved feature scaler."""
+    scaler_params = np.load('models/feature_scaler.npy', allow_pickle=True).item()
+    scaler = MinMaxScaler()
+    scaler.scale_ = scaler_params['scale_']
+    scaler.min_ = scaler_params['min_']
+    scaler.data_min_ = scaler_params['data_min_']
+    scaler.data_max_ = scaler_params['data_max_']
+    scaler.data_range_ = scaler_params['data_range_']
+    return scaler
 
 def calculate_metrics(y_true, y_pred):
     """Calculate various performance metrics."""
@@ -57,9 +69,17 @@ def main():
     print("Loading test data...")
     test_data = pd.read_csv('data/processed/test_data.csv')
     
+    # Load scaler
+    print("\nLoading feature scaler...")
+    scaler = load_scaler()
+    
     # Prepare input data
-    X_test = test_data.drop('target', axis=1).values
+    X_test = test_data[['open', 'high', 'low', 'volume']].values
     y_true = test_data['target'].values
+    
+    # Scale features
+    print("\nScaling features...")
+    X_test_scaled = scaler.transform(X_test)
     
     # Initialize model
     print("\nInitializing model...")
@@ -68,7 +88,7 @@ def main():
     
     # Generate predictions
     print("\nGenerating predictions...")
-    y_pred = model.predict(X_test).flatten()
+    y_pred = model.predict(X_test_scaled).flatten()
     
     # Calculate metrics
     print("\nCalculating metrics...")

@@ -35,6 +35,19 @@ class LSTMModel(nn.Module):
         self.fc = nn.Linear(hidden_size, 1)
     
     def forward(self, x):
+        """Forward pass of the model.
+        
+        Args:
+            x (torch.Tensor): Input tensor of shape (batch_size, seq_length, input_size)
+                             or (batch_size, input_size)
+        
+        Returns:
+            torch.Tensor: Output predictions
+        """
+        # Add sequence length dimension if not present
+        if len(x.shape) == 2:
+            x = x.unsqueeze(1)  # (batch_size, 1, input_size)
+        
         # Forward propagate LSTM
         lstm_out, _ = self.lstm(x)  # lstm_out: (batch_size, seq_length, hidden_size)
         
@@ -167,21 +180,18 @@ class StockPriceLSTM:
         Make predictions using the trained model.
         
         Args:
-            X (np.ndarray): Input features
+            X (np.ndarray): Input features of shape (n_samples, n_features)
             
         Returns:
-            np.ndarray: Predicted values
+            np.ndarray: Predicted values as a 1D array of shape (n_samples,)
         """
         try:
             self.model.eval()
             X_tensor = torch.FloatTensor(X).to(self.device)
             
-            # Add batch dimension if not present
-            if len(X_tensor.shape) == 2:
-                X_tensor = X_tensor.unsqueeze(0)
-            
             with torch.no_grad():
                 predictions = self.model(X_tensor)
+                predictions = predictions.squeeze()  # Remove any extra dimensions
             
             return predictions.cpu().numpy()
             
