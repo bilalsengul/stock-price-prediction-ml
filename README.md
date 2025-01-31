@@ -492,4 +492,81 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 - Thanks to the PyTorch team for the excellent deep learning framework
 - Yahoo Finance for providing financial data
-- The open-source community for various tools and libraries 
+- The open-source community for various tools and libraries
+
+## Data Source
+The historical stock price data is obtained from Yahoo Finance API using the `yfinance` library. This source was chosen because it provides:
+- Reliable and accurate historical data
+- Easy-to-use API with good documentation
+- Comprehensive OHLCV (Open, High, Low, Close, Volume) data
+- Free access to historical data
+
+## Technical Indicators
+The following technical indicators were implemented for feature engineering:
+
+1. **Required Indicators**:
+   - RSI (Relative Strength Index): Measures momentum and overbought/oversold conditions
+   - MACD (Moving Average Convergence Divergence): Trend-following momentum indicator
+   - Bollinger Bands: Volatility indicator showing price channels
+
+2. **Additional Indicators**:
+   - Moving Averages (5-day and 10-day): For trend identification
+   - Price Momentum (1-day, 3-day, 5-day): For capturing short-term price movements
+   - Volatility (5-day, 10-day): For measuring price dispersion
+   - Moving Average Crossovers: For trend change signals
+
+## Evaluation Metrics Selection
+The model's performance is evaluated using multiple metrics, each chosen for specific reasons:
+
+1. **MSE (Mean Squared Error)**: 
+   - Chosen for its sensitivity to large errors
+   - Useful for comparing different model iterations
+   - Current value: 0.0005
+
+2. **RMSE (Root Mean Squared Error)**:
+   - Selected for interpretability in the same unit as the target variable
+   - Helps in understanding the average prediction error
+   - Current value: 0.0218
+
+3. **MAE (Mean Absolute Error)**:
+   - Used for its robustness to outliers
+   - Provides a clear average error magnitude
+   - Current value: 0.0174
+
+4. **R² (Coefficient of Determination)**:
+   - Indicates how well the model captures price variations
+   - Helps compare against baseline predictions
+   - Current value: -0.2375
+
+5. **MAPE (Mean Absolute Percentage Error)**:
+   - Chosen for scale-independent error measurement
+   - Useful for stakeholder communication
+   - Current value: 657.5794
+
+## Running the Code
+1. Clone the repository:
+   ```bash
+   git clone [repository-url]
+   cd stock-price-prediction-ml
+   ```
+
+2. Create and activate a virtual environment:
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+   ```
+
+3. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+4. Run the training:
+   ```bash
+   python src/models/train_model.py
+   ```
+
+5. Evaluate the model:
+   ```bash
+   python src/evaluation/run_evaluation.py
+   ``` 
