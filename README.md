@@ -1,6 +1,6 @@
 # Stock Price Prediction using Machine Learning
 
-This project implements a deep learning model for predicting stock price movements using historical financial data. The implementation uses PyTorch's LSTM architecture to capture temporal dependencies in stock price data, combined with comprehensive data preprocessing and feature engineering.
+This project implements a deep learning model for predicting stock price movements using historical financial data. The implementation uses PyTorch's LSTM architecture with attention mechanism to capture temporal dependencies in stock price data, combined with comprehensive data preprocessing and feature engineering.
 
 ## Overview
 
@@ -66,42 +66,95 @@ The system is designed to:
    - Configurable sequence length (default: 60 time steps)
    - Sliding window approach for sample generation
 
-## Model Architecture
+## Latest Model Architecture
 
-### LSTM Network Details
-```
+The current model implementation features:
+
+1. **Enhanced LSTM Architecture**:
+   - Bidirectional LSTM layers with residual connections
+   - Layer normalization for better training stability
+   - Attention mechanism for focusing on relevant time steps
+   - Dropout and regularization for preventing overfitting
+
+2. **Advanced Features**:
+   - Price momentum indicators
+   - Volatility measures
+   - Moving average crossovers
+   - Technical indicators
+
+3. **Data Augmentation**:
+   - Random noise injection
+   - Time shift augmentation
+   - Multiple augmentation techniques for robust training
+
+## Latest Results
+
+### Performance Metrics (Latest Run)
+| Metric | Value | Description |
+|--------|--------|-------------|
+| MSE    | 0.0005 | Mean Squared Error |
+| RMSE   | 0.0218 | Root Mean Squared Error |
+| MAE    | 0.0174 | Mean Absolute Error |
+| R²     | -0.2375 | Coefficient of Determination |
+| MAPE   | 657.5794 | Mean Absolute Percentage Error |
+
+### Model Architecture Details
+```python
 LSTMModel(
-  (lstm): LSTM(
-    input_size=4,           # 4 features: open, high, low, volume
-    hidden_size=64,         # 64 hidden units
-    num_layers=2,           # 2 stacked LSTM layers
-    batch_first=True,       # (batch_size, seq_len, features)
-    dropout=0.2            # 20% dropout for regularization
+  (input_norm): LayerNorm((9,), eps=1e-05, elementwise_affine=True)
+  (lstm_layers): ModuleList(
+    (0): LSTM(9, 128, batch_first=True, bidirectional=True)
+    (1): LSTM(256, 128, batch_first=True, bidirectional=True)
   )
-  (fc): Linear(
-    in_features=64,        # Match LSTM hidden size
-    out_features=1         # Single price prediction
+  (layer_norms): ModuleList(
+    (0-1): 2 x LayerNorm((256,), eps=1e-05, elementwise_affine=True)
+  )
+  (attention): Sequential(
+    (0): Linear(in_features=256, out_features=128, bias=True)
+    (1): GELU(approximate='none')
+    (2): Linear(in_features=128, out_features=1, bias=True)
+    (3): Softmax(dim=1)
+  )
+  (fc_layers): Sequential(
+    (0): LayerNorm((256,), eps=1e-05, elementwise_affine=True)
+    (1): Linear(in_features=256, out_features=128, bias=True)
+    (2): GELU(approximate='none')
+    (3): Dropout(p=0.2, inplace=False)
+    (4): LayerNorm((128,), eps=1e-05, elementwise_affine=True)
+    (5): Linear(in_features=128, out_features=64, bias=True)
+    (6): GELU(approximate='none')
+    (7): Dropout(p=0.2, inplace=False)
+    (8): LayerNorm((64,), eps=1e-05, elementwise_affine=True)
+    (9): Linear(in_features=64, out_features=1, bias=True)
   )
 )
-```
 
-### Key Components:
+### Training Configuration
+- Optimizer: Adam with cosine annealing warm restarts
+- Learning Rate: 0.001 with decay
+- Batch Size: 32
+- Sequence Length: 10
+- Early Stopping Patience: 15
+- Dropout Rate: 0.2
 
-1. **Input Layer**:
-   - Accepts 4 features (OHLV data)
-   - Handles both batched and single sample inputs
-   - Automatic shape adjustment for sequence dimension
+### Key Improvements
+1. **Architecture Enhancements**:
+   - Bidirectional LSTM with residual connections
+   - Layer normalization for better gradient flow
+   - Attention mechanism for temporal focus
+   - Deep fully connected layers with GELU activation
 
-2. **LSTM Layers**:
-   - 2 stacked LSTM layers for deep temporal learning
-   - 64 hidden units per layer for complex pattern capture
-   - Dropout (0.2) between layers for regularization
-   - Batch-first configuration for intuitive data handling
+2. **Training Optimizations**:
+   - RobustScaler for better outlier handling
+   - Enhanced data augmentation techniques
+   - Cosine annealing learning rate schedule
+   - Gradient clipping for stability
 
-3. **Output Layer**:
-   - Dense layer for final prediction
-   - Single unit output for price prediction
-   - Linear activation for regression task
+3. **Feature Engineering**:
+   - Advanced technical indicators
+   - Multiple timeframe momentum features
+   - Volatility measures
+   - Moving average crossovers
 
 ## Training Process
 
