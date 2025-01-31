@@ -20,7 +20,7 @@ class TimeSeriesDataset(Dataset):
         return self.X[idx], self.y[idx]
 
 class LSTMModel(nn.Module):
-    def __init__(self, input_size: int, hidden_size: int = 50, num_layers: int = 3, dropout: float = 0.2):
+    def __init__(self, input_size, hidden_size=64, num_layers=2):
         super().__init__()
         self.hidden_size = hidden_size
         self.num_layers = num_layers
@@ -29,47 +29,21 @@ class LSTMModel(nn.Module):
             input_size=input_size,
             hidden_size=hidden_size,
             num_layers=num_layers,
-            dropout=dropout,
-            batch_first=True
+            batch_first=True,
+            dropout=0.2
         )
-        
         self.fc = nn.Linear(hidden_size, 1)
-        
+    
     def forward(self, x):
-        # Initialize hidden state with zeros
-        h0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size).to(x.device)
-        c0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size).to(x.device)
-            
         # Forward propagate LSTM
-        out, _ = self.lstm(x, (h0, c0))  # out: tensor of shape (batch_size, seq_length, hidden_size)
+        lstm_out, _ = self.lstm(x)  # lstm_out: (batch_size, seq_length, hidden_size)
         
-        # Decode the hidden state of the last time step
-        out = self.fc(out[:, -1, :])
+        # Get the last time step output
+        last_time_step = lstm_out[:, -1, :]  # (batch_size, hidden_size)
+        
+        # Predict
+        out = self.fc(last_time_step)  # (batch_size, 1)
         return out
-
-class StockPriceLSTM(nn.Module):
-    def __init__(self, input_size=5, hidden_size=64, num_layers=2):
-        super().__init__()
-        self.input_size = input_size
-        self.hidden_size = hidden_size
-        self.num_layers = num_layers
-        
-        self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True)
-        self.fc = nn.Linear(hidden_size, 1)
-    
-    def forward(self, x):
-        # LSTM expects input shape: (batch_size, seq_length, input_size)
-        if len(x.shape) == 2:
-            x = x.unsqueeze(0)  # Add batch dimension
-        lstm_out, _ = self.lstm(x)
-        predictions = self.fc(lstm_out[:, -1, :])  # Take the last output
-        return predictions
-    
-    @classmethod
-    def load_model(cls, filepath=None):
-        # For testing purposes, return a dummy model
-        model = cls(input_size=4)  # 4 features: open, high, low, volume
-        return model
 
 class StockPriceLSTM:
     def __init__(self, sequence_length: int = 60, n_features: int = 5):
@@ -83,12 +57,22 @@ class StockPriceLSTM:
         self.sequence_length = sequence_length
         self.n_features = n_features
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu')
+        
+        # Initialize the model
         self.model = LSTMModel(input_size=n_features).to(self.device)
         self.criterion = nn.MSELoss()
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=0.001)
         
         logger.info(f"Using device: {self.device}")
         logger.info(f"Model architecture:\n{self.model}")
+    
+    @staticmethod
+    def load_model(filepath=None):
+        """Load a pretrained model or create a new one for testing."""
+        model = StockPriceLSTM(n_features=4)  # 4 features: open, high, low, volume
+        if filepath and os.path.exists(filepath):
+            model.model.load_state_dict(torch.load(filepath))
+        return model
         
     def train(self, X_train: np.ndarray, y_train: np.ndarray, 
               X_val: np.ndarray, y_val: np.ndarray,
@@ -192,6 +176,10 @@ class StockPriceLSTM:
             self.model.eval()
             X_tensor = torch.FloatTensor(X).to(self.device)
             
+            # Add batch dimension if not present
+            if len(X_tensor.shape) == 2:
+                X_tensor = X_tensor.unsqueeze(0)
+            
             with torch.no_grad():
                 predictions = self.model(X_tensor)
             
@@ -229,51 +217,10 @@ class StockPriceLSTM:
                 'mape': mape
             }
             
-            logger.info("Model evaluation completed:")
-            for metric, value in metrics.items():
-                logger.info(f"{metric.upper()}: {value:.4f}")
-                
             return metrics
             
         except Exception as e:
-            logger.error(f"Error during model evaluation: {str(e)}")
-            raise
-            
-    def save_model(self, filepath: str):
-        """
-        Save the trained model.
-        
-        Args:
-            filepath (str): Path to save the model
-        """
-        try:
-            torch.save({
-                'model_state_dict': self.model.state_dict(),
-                'sequence_length': self.sequence_length,
-                'n_features': self.n_features
-            }, filepath)
-            logger.info(f"Model saved successfully to {filepath}")
-            
-        except Exception as e:
-            logger.error(f"Error saving model: {str(e)}")
-            raise
-            
-    def load_model(self, filepath: str):
-        """
-        Load a trained model.
-        
-        Args:
-            filepath (str): Path to the saved model
-        """
-        try:
-            checkpoint = torch.load(filepath)
-            self.model.load_state_dict(checkpoint['model_state_dict'])
-            self.sequence_length = checkpoint['sequence_length']
-            self.n_features = checkpoint['n_features']
-            logger.info(f"Model loaded successfully from {filepath}")
-            
-        except Exception as e:
-            logger.error(f"Error loading model: {str(e)}")
+            logger.error(f"Error during evaluation: {str(e)}")
             raise
 
 def main():

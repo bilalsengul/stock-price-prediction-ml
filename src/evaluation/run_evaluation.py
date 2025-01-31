@@ -15,12 +15,39 @@ from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 from src.models.lstm_model import StockPriceLSTM
 
 def calculate_metrics(y_true, y_pred):
+    """Calculate various performance metrics."""
     return {
         'MSE': mean_squared_error(y_true, y_pred),
         'RMSE': np.sqrt(mean_squared_error(y_true, y_pred)),
         'MAE': mean_absolute_error(y_true, y_pred),
-        'R2': r2_score(y_true, y_pred)
+        'R2': r2_score(y_true, y_pred),
+        'MAPE': np.mean(np.abs((y_true - y_pred) / y_true)) * 100
     }
+
+def plot_predictions(y_true, y_pred, save_path):
+    """Plot actual vs predicted values."""
+    plt.figure(figsize=(12, 6))
+    plt.plot(y_true, label='Actual', alpha=0.7)
+    plt.plot(y_pred, label='Predicted', alpha=0.7)
+    plt.title('Stock Price: Actual vs Predicted')
+    plt.xlabel('Time')
+    plt.ylabel('Price')
+    plt.legend()
+    plt.grid(True)
+    plt.savefig(save_path)
+    plt.close()
+
+def plot_error_distribution(y_true, y_pred, save_path):
+    """Plot error distribution."""
+    errors = y_true - y_pred
+    plt.figure(figsize=(10, 6))
+    plt.hist(errors, bins=50, density=True, alpha=0.7)
+    plt.title('Distribution of Prediction Errors')
+    plt.xlabel('Prediction Error')
+    plt.ylabel('Frequency')
+    plt.grid(True)
+    plt.savefig(save_path)
+    plt.close()
 
 def main():
     # Change to project root directory
@@ -31,18 +58,17 @@ def main():
     test_data = pd.read_csv('data/processed/test_data.csv')
     
     # Prepare input data
-    X_test = torch.FloatTensor(test_data.drop('target', axis=1).values)
+    X_test = test_data.drop('target', axis=1).values
     y_true = test_data['target'].values
     
-    # Load model
-    print("\nLoading model...")
-    model = StockPriceLSTM.load_model()
-    model.eval()
+    # Initialize model
+    print("\nInitializing model...")
+    model = StockPriceLSTM(sequence_length=1, n_features=X_test.shape[1])
+    print(f"Using device: {model.device}")
     
     # Generate predictions
     print("\nGenerating predictions...")
-    with torch.no_grad():
-        y_pred = model(X_test).numpy().flatten()
+    y_pred = model.predict(X_test).flatten()
     
     # Calculate metrics
     print("\nCalculating metrics...")
@@ -53,23 +79,25 @@ def main():
     for metric, value in metrics.items():
         print(f"{metric:15s}: {value:.4f}")
     
-    # Create plots directory
+    # Create output directory
     os.makedirs('outputs/evaluation', exist_ok=True)
     
-    # Plot predictions vs actual
-    print("\nGenerating plots...")
-    plt.figure(figsize=(12, 6))
-    plt.plot(y_true, label='Actual', alpha=0.7)
-    plt.plot(y_pred, label='Predicted', alpha=0.7)
-    plt.title('Stock Price: Actual vs Predicted')
-    plt.xlabel('Time')
-    plt.ylabel('Price')
-    plt.legend()
-    plt.grid(True)
-    plt.savefig('outputs/evaluation/predictions.png')
-    plt.close()
+    # Generate and save plots
+    print("\nGenerating visualizations...")
+    plot_predictions(y_true, y_pred, 'outputs/evaluation/predictions.png')
+    plot_error_distribution(y_true, y_pred, 'outputs/evaluation/error_distribution.png')
+    
+    # Save metrics to file
+    with open('outputs/evaluation/metrics.txt', 'w') as f:
+        f.write("Model Performance Metrics:\n")
+        f.write("-" * 30 + "\n")
+        for metric, value in metrics.items():
+            f.write(f"{metric:15s}: {value:.4f}\n")
     
     print("\nEvaluation complete! Results saved in outputs/evaluation/")
+    print("- predictions.png")
+    print("- error_distribution.png")
+    print("- metrics.txt")
 
 if __name__ == "__main__":
     main() 
